@@ -1,7 +1,10 @@
 ﻿using System;
+using System.Collections.Generic;
+using System.ComponentModel;
 using System.Net.Sockets;
 using System.Text;
 using System.Threading;
+using System.Threading.Tasks;
 using System.Windows;
 
 namespace _7dtdManagerWPF
@@ -19,9 +22,9 @@ namespace _7dtdManagerWPF
         private TcpClient client;
         private NetworkStream networkStream;
         private NetworkStream stream;
-        private ThreadStart threadStart1;
-        private ThreadStart threadStart2;
-        private bool exitSystem = false;
+        //private ThreadStart threadStart1;
+        //private ThreadStart threadStart2;
+        private bool connected = false;
 
 
         public MainWindow()
@@ -29,7 +32,8 @@ namespace _7dtdManagerWPF
             InitializeComponent();
         }
 
-  
+
+
         private void button_Click_1(object sender, RoutedEventArgs e)
         {
             if (!iptextBox.Text.Equals(""))
@@ -43,15 +47,13 @@ namespace _7dtdManagerWPF
                 outputWindow.AppendText("Ip: " + serverIp + ", Port: " + serverPort + "\n");
 
                 Connect();
-
-
             }
             else
             {
                 outputWindow.AppendText("***DEBUG*** : Ip empty \n");
 
-
-                this.serverIp = "192.168.0.8";
+                this.serverIp = "80.4.92.204";
+                // this.serverIp = "192.168.0.8";
                 this.serverPort = 8081;
                 this.password = "abertawe";
 
@@ -59,15 +61,21 @@ namespace _7dtdManagerWPF
             }
         }
 
+        private void button1_Click(object sender, RoutedEventArgs e)
+        {
+            connected = false;
+            client.Close();
+            outputWindow.AppendText("***DEBUG*** : Disconnected \n");
+        }
 
 
-        public void Connect()
+
+        public async void Connect()
         {
             try
             {
                 client = new TcpClient(serverIp, serverPort);
-               // Console.WriteLine("Connected to " + serverIp + " on Port: " + serverPort);
-
+                // Console.WriteLine("Connected to " + serverIp + " on Port: " + serverPort);
 
                 //Assign networkstream
                 networkStream = client.GetStream();
@@ -76,29 +84,23 @@ namespace _7dtdManagerWPF
                 //  Stream stream = client.GetStream();
                 stream = client.GetStream();
 
+                //connected
+                connected = true;
+
+                //initial read and pasword send
                 InitialConnection();
 
-
-                //ReadData();
-                //threadStart1 = new ThreadStart(ReadData);
-                //Thread thread1 = new Thread(threadStart1);
-                //thread1.Start();
-
-                //threadStart2 = new ThreadStart(WriteData);
-                //Thread thread2 = new Thread(threadStart2);
-                //thread2.Start();
-
+                // Task.Run(() => ReadData(this));
+                await Task.Run(() => ReadPlayerData(this));
             }
             catch (SocketException e)
             {
                 //Console.WriteLine("SocketException: " + e + ", failed to connect");
             }
-
-            //Console.WriteLine("Connection complete - closing");
-            // client.Close();
+            client.Close();
         }
 
-
+        //no threading used
         public void InitialConnection()
         {
             //read
@@ -116,9 +118,6 @@ namespace _7dtdManagerWPF
             // Read the first batch of the TcpServer response bytes.
             Int32 bytes = stream.Read(data, 0, data.Length);
             responseData = System.Text.Encoding.ASCII.GetString(data, 0, bytes);
-
-            outputWindow.AppendText("Received: " + responseData);
-            //Console.WriteLine("Received: {0}", responseData);
         }
 
 
@@ -131,12 +130,48 @@ namespace _7dtdManagerWPF
             stream.Flush();
         }
 
-        public void ReadData()
+        public void ReadData(MainWindow gui)
         {
-            while (!exitSystem)
+           // gui.UpdateConsoleWindow("Working!!!!!");            
+              
+                while (connected)
+                {
+                    String responseData = String.Empty;
+                    Byte[] data = new Byte[1024];
+                    // Read the first batch of the TcpServer response bytes.
+                    Int32 bytes = stream.Read(data, 0, data.Length);
+                    responseData = System.Text.Encoding.ASCII.GetString(data, 0, bytes);
+                    //Console.WriteLine("length: " + responseData.Length);
+                    if (responseData.Length > 2)
+                    {
+                      gui.UpdateConsoleWindow("Server: " + responseData);
+                    // outputWindow.AppendText("Server: " + responseData);
+                    }
+                    Thread.Sleep(1000);
+                }
+
+            gui.UpdateConsoleWindow("***DEBUG** - Complete!!!!!");
+
+
+        }
+
+        void UpdateConsoleWindow(string text)
+        {
+            var textTrim = text.Trim();
+            Dispatcher.Invoke(() =>
             {
-                //read
-                // String to store the response ASCII representation.
+                outputWindow.AppendText(textTrim + "\n");
+            });
+        }
+
+
+        public void ReadPlayerData(MainWindow gui)
+        {
+            // gui.UpdateConsoleWindow("Working!!!!!");            
+
+            while (connected)
+            {
+                Write("listplayers");
                 String responseData = String.Empty;
                 Byte[] data = new Byte[1024];
                 // Read the first batch of the TcpServer response bytes.
@@ -145,41 +180,50 @@ namespace _7dtdManagerWPF
                 //Console.WriteLine("length: " + responseData.Length);
                 if (responseData.Length > 2)
                 {
-                    //Console.WriteLine("Server: {0}", responseData);
-                    outputWindow.AppendText("Server: " + responseData);
+                    gui.UpdateConsoleWindow("Server: ****PlayerList***: " + responseData);
+                    // outputWindow.AppendText("Server: " + responseData);
                 }
-
-                //Thread.Sleep(10);
+                Thread.Sleep(30000);
             }
-            exitSystem = true;
-            client.Close();
+
+            gui.UpdateConsoleWindow("***DEBUG** - Complete!!!!!");
         }
-
-
-        private void WriteData()
+        void UpdatePlayerWindow(List<string> users)
         {
-
-            string message = "";
-            Byte[] data = new Byte[1024];
-            while (!exitSystem)
+            Dispatcher.Invoke(() =>
             {
-                Console.WriteLine("Input: ");
-                message = Console.ReadLine();
-
-                if (message.Equals("lplay"))
-                {
-                    message = "listplayers";
-                }
-
-                message += Environment.NewLine;
-                data = Encoding.ASCII.GetBytes(message);
-                stream.Write(data, 0, data.Length);
-                stream.Flush();
-                Thread.Sleep(10);
-                Console.Write("Input: ");
-            }
-
+                listBox.Items.Clear();
+                foreach (String s in users)
+                listBox.Items.Add(s.Trim());
+            });
         }
+
+
+
+        //private void WriteData()
+        //{
+
+        //    string message = "";
+        //    Byte[] data = new Byte[1024];
+        //    while (!exitSystem)
+        //    {
+        //        Console.WriteLine("Input: ");
+        //        message = Console.ReadLine();
+
+        //        if (message.Equals("lplay"))
+        //        {
+        //            message = "listplayers";
+        //        }
+
+        //        message += Environment.NewLine;
+        //        data = Encoding.ASCII.GetBytes(message);
+        //        stream.Write(data, 0, data.Length);
+        //        stream.Flush();
+        //        Thread.Sleep(10);
+        //        Console.Write("Input: ");
+        //    }
+
+        //}
 
 
     }
