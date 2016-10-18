@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.ComponentModel;
+using System.Linq;
 using System.Net.Sockets;
 using System.Text;
 using System.Threading;
@@ -26,9 +27,12 @@ namespace _7dtdManagerWPF
         //private ThreadStart threadStart2;
         private bool connected = false;
 
+        private List<Player> playerList;
+
 
         public MainWindow()
         {
+            playerList = new List<Player>();
             InitializeComponent();
         }
 
@@ -70,6 +74,8 @@ namespace _7dtdManagerWPF
 
 
 
+
+
         public async void Connect()
         {
             try
@@ -88,69 +94,74 @@ namespace _7dtdManagerWPF
                 connected = true;
 
                 //initial read and pasword send
-                InitialConnection();
-
-                // Task.Run(() => ReadData(this));
-                await Task.Run(() => ReadPlayerData(this));
+                //InitialConnection();
+                await Task.Run(() => Read(this));
+                await Task.Run(() => Write(this, password));
+                Task.Run(() => ReadData(this));
             }
             catch (SocketException e)
             {
                 //Console.WriteLine("SocketException: " + e + ", failed to connect");
+                outputWindow.AppendText("***DEBUG*** : Disconnected error " + e + " \n");
             }
-            client.Close();
+
+
+            //client.Close();
+            outputWindow.AppendText("***DEBUG*** : Disconnected \n");
         }
 
-        //no threading used
-        public void InitialConnection()
+        public void Read(MainWindow gui)
         {
-            //read
-            Read();
-            //write password
-            Write(password);
-        }
-
-
-        public void Read()
-        {
+      
             // String to store the response ASCII representation.
             string responseData = string.Empty;
             Byte[] data = new Byte[1024];
             // Read the first batch of the TcpServer response bytes.
             Int32 bytes = stream.Read(data, 0, data.Length);
             responseData = System.Text.Encoding.ASCII.GetString(data, 0, bytes);
+            //  outputWindow.AppendText("***DEBUG*** : " + responseData + "\n");
+            gui.UpdateConsoleWindow("***DEBUG** - Data read Complete!!!!!");
+   
         }
 
-
-        public void Write(string message)
+        public void Write(MainWindow gui, string message)
         {
             Byte[] data = new Byte[1024];
             message += Environment.NewLine;
             data = Encoding.ASCII.GetBytes(message);
-            stream.Write(data, 0, data.Length);
+            stream.Write(data, 0, data.Length);      
+            gui.UpdateConsoleWindow("***DEBUG** - writing to output: " + message);
+            Thread.Sleep(1000);
             stream.Flush();
         }
 
+
         public void ReadData(MainWindow gui)
         {
-           // gui.UpdateConsoleWindow("Working!!!!!");            
-              
+            // gui.UpdateConsoleWindow("Working!!!!!");            
+            var responseData = "";
                 while (connected)
                 {
-                    String responseData = String.Empty;
-                    Byte[] data = new Byte[1024];
-                    // Read the first batch of the TcpServer response bytes.
-                    Int32 bytes = stream.Read(data, 0, data.Length);
-                    responseData = System.Text.Encoding.ASCII.GetString(data, 0, bytes);
-                    //Console.WriteLine("length: " + responseData.Length);
-                    if (responseData.Length > 2)
-                    {
-                      gui.UpdateConsoleWindow("Server: " + responseData);
-                    // outputWindow.AppendText("Server: " + responseData);
-                    }
-                    Thread.Sleep(1000);
+                       gui.UpdateConsoleWindow("Server: ***inside readdata outer*****");
+              
+                       gui.UpdateConsoleWindow("Server: ***inside readdata  inner*****");
+
+                        responseData = ReadFromServer();
+                        //Console.WriteLine("length: " + responseData.Length);
+                        if (responseData.Length > 2)
+                        {
+                            gui.UpdateConsoleWindow("Server: " + responseData);
+                            // outputWindow.AppendText("Server: " + responseData);
+                        }
+                        else
+                        {
+                            gui.UpdateConsoleWindow("Server: Nothing to  report");
+                        }
+
+                 Thread.Sleep(60000);
                 }
 
-            gui.UpdateConsoleWindow("***DEBUG** - Complete!!!!!");
+            gui.UpdateConsoleWindow("***DEBUG** - ReadData Completed!!!!!");
 
 
         }
@@ -163,68 +174,72 @@ namespace _7dtdManagerWPF
                 outputWindow.AppendText(textTrim + "\n");
             });
         }
+        
 
-
-        public void ReadPlayerData(MainWindow gui)
+        public string ReadFromServer()
         {
-            // gui.UpdateConsoleWindow("Working!!!!!");            
-
-            while (connected)
-            {
-                Write("listplayers");
-                String responseData = String.Empty;
-                Byte[] data = new Byte[1024];
-                // Read the first batch of the TcpServer response bytes.
-                Int32 bytes = stream.Read(data, 0, data.Length);
-                responseData = System.Text.Encoding.ASCII.GetString(data, 0, bytes);
-                //Console.WriteLine("length: " + responseData.Length);
-                if (responseData.Length > 2)
-                {
-                    gui.UpdateConsoleWindow("Server: ****PlayerList***: " + responseData);
-                    // outputWindow.AppendText("Server: " + responseData);
-                }
-                Thread.Sleep(30000);
-            }
-
-            gui.UpdateConsoleWindow("***DEBUG** - Complete!!!!!");
+            String responseData = String.Empty;
+            Byte[] data = new Byte[1024];
+            // Read the first batch of the TcpServer response bytes.
+            Int32 bytes = stream.Read(data, 0, data.Length);
+            responseData = System.Text.Encoding.ASCII.GetString(data, 0, bytes);
+            return responseData;
         }
-        void UpdatePlayerWindow(List<string> users)
+
+        void UpdatePlayerWindow(List<Player> playerList)
         {
             Dispatcher.Invoke(() =>
             {
                 listBox.Items.Clear();
-                foreach (String s in users)
-                listBox.Items.Add(s.Trim());
+                foreach (Player p in playerList)
+                listBox.Items.Add(p.Name);
             });
         }
 
 
+       void GetPayersFromServerString()
+        {
 
-        //private void WriteData()
-        //{
+            //listplayers
+            //2016-10-18T10:59:08 445354.197 INF Executing command 'listplayers' by Telnet from 158.234.250.7:28820
+            //1. id=14588, sfur, pos=(1847.5, 4.1, -270.5), rot=(-29.5, 59.1, 0.0), remote=True, health=100, deaths=7, zombies=1177, players=0, score=1142, level=144, steamid=76561198015252609, ip=80.89.51.95, ping=76
+            //2. id=15983, Emanuel Kant, pos = (122.5, 41.5, 505.5), rot=(90.0, -4052.8, 0.0), remote=True, health=166, deaths=1, zombies=554, players=0, score=549, level=98, steamid=76561198060542438, ip=86.6.32.123, ping=23
+            //Total of 2 in the game
 
-        //    string message = "";
-        //    Byte[] data = new Byte[1024];
-        //    while (!exitSystem)
-        //    {
-        //        Console.WriteLine("Input: ");
-        //        message = Console.ReadLine();
+            List<Player> temp = new List<Player>();
+            //remove first line
+            //string[] lines = data.Split(Environment.NewLine.ToCharArray()).Skip(1).ToArray();
+            //split data up from each playerstats
 
-        //        if (message.Equals("lplay"))
-        //        {
-        //            message = "listplayers";
-        //        }
+            var message = "";
+            if (!consoleBox.Text.Equals(""))
+            {
+                outputWindow.AppendText("***DEBUG***  - Command " + consoleBox.Text + "\n");
+                message = consoleBox.Text;
+                Write(this, message);
+            }
+            message = "";
+            consoleBox.Text = "";
+            string str = ReadFromServer();
 
-        //        message += Environment.NewLine;
-        //        data = Encoding.ASCII.GetBytes(message);
-        //        stream.Write(data, 0, data.Length);
-        //        stream.Flush();
-        //        Thread.Sleep(10);
-        //        Console.Write("Input: ");
-        //    }
 
-        //}
+            MessageBox.Show("***DEBUG****" + str);
+        }
 
+   
+        private void button2_Click_1(object sender, RoutedEventArgs e)
+        {
+            GetPayersFromServerString();
+        }
+
+       
 
     }
 }
+
+
+//listplayers
+//2016-10-18T10:59:08 445354.197 INF Executing command 'listplayers' by Telnet from 158.234.250.7:28820
+//1. id=14588, sfur, pos=(1847.5, 4.1, -270.5), rot=(-29.5, 59.1, 0.0), remote=True, health=100, deaths=7, zombies=1177, players=0, score=1142, level=144, steamid=76561198015252609, ip=80.89.51.95, ping=76
+//2. id=15983, Emanuel Kant, pos = (122.5, 41.5, 505.5), rot=(90.0, -4052.8, 0.0), remote=True, health=166, deaths=1, zombies=554, players=0, score=549, level=98, steamid=76561198060542438, ip=86.6.32.123, ping=23
+//Total of 2 in the game
